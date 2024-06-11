@@ -1,0 +1,4 @@
+name: ChangeMapPlugin
+displayName: Adds the ability to change the server map by voting.
+minGameVersion: 146
+hidden: true
