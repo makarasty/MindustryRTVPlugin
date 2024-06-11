@@ -5,3 +5,13 @@ During the use of the command /rtv by any user on the server starts the votes ab
 ![image](https://github.com/makarasty/MindustryRTVPlugin/assets/71918286/68e704db-d7a5-42fd-a3ec-41330648017c)
 <br>
 Now the plugin is translated into Ukrainian, but you can translate it into any language you want by changing the main plugin file!
+# Install
+Install https://github.com/makarasty/MindustryRTVPlugin/releases
+<br>
+Transfer the file to
+`~\ServerFolder\config\mods`
+<br>
+You should get
+`~\ServerFolder\config\mods\ChangeMapPlugin`
+<br>
+Testart the server!
