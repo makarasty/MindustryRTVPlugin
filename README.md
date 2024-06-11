@@ -14,4 +14,4 @@ Transfer the file to
 You should get
 `~\ServerFolder\config\mods\ChangeMapPlugin`
 <br>
-Testart the server!
+Restart the server!
