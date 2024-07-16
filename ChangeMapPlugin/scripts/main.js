@@ -39,6 +39,8 @@ function rtvCommand(args, player) {
 	if (rtvVotes.has(playerID)) {
 		player.sendMessage(`[red]Ви вже голосували за зміну карти[gray]!`);
 	} else {
+		rtvVotes.add(playerID);
+
 		if (requiredVotes === 1) {
 			Call.sendMessage([
 				'[white]' + player.name + ' [yellow]Змінює карту[gray]!'
@@ -51,8 +53,6 @@ function rtvCommand(args, player) {
 				'[gray]Використовуй /rtv для зміни карти!'
 			].join('\n'));
 		}
-
-		rtvVotes.add(playerID);
 
 		changeServerMapIfVotes(rtvVotes.size, requiredVotes)
 	}
