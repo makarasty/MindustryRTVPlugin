@@ -1,97 +1,159 @@
-//Init
-const delays = new Set()
-const rtvVotes = new Set();
-const rtvVoteRatio = 0.5; // 50% користувачів серверу повинні голосувати
+// Configuration
+var config = {
+	voteRatio: 0.5,
+	cooldownMs: 12000,
+	voteTimeoutMs: 60000,
+};
 
-// Functions
+// State management
+var state = {
+	delays: new Set(),
+	rtvVotes: new Set(),
+	mapChangeInProgress: false,
+	voteTimer: null,
+};
+
+// Utility functions
 function setTimeout(callback, delay) {
-	const timer = new java.util.Timer();
-
+	var timer = new java.util.Timer();
 	timer.schedule(new java.util.TimerTask({ run: callback }), delay);
+	return timer;
 }
 
 function CommandsMethodRunner(method) {
-	return new Packages.arc.util.CommandHandler.CommandRunner({ accept: method })
+	return new Packages.arc.util.CommandHandler.CommandRunner({ accept: method });
 }
 
-function changeServerMapIfVotes(currentVotes, requiredVotes) {
-	if (currentVotes >= requiredVotes) {
-		rtvVotes.clear();
-
-		Call.sendMessage('[green] Голосів достатньо, змінюю карту!');
-
-		Events.fire(new GameOverEvent(Team.crux));
-	}
+// Core functionality
+function getRequiredVotes() {
+	return Math.ceil(config.voteRatio * Groups.player.size());
 }
 
-function rtvCommand(args, player) {
-	const playersCount = Groups.player.size()
-	const requiredVotes = Math.ceil(rtvVoteRatio * playersCount);
-	const playerID = player.uuid();
+function resetVoting() {
+	if (state.voteTimer) {
+		state.voteTimer.cancel();
+		state.voteTimer = null;
+	}
+	state.rtvVotes.clear();
+}
 
-	if (delays.has(playerID)) {
-		return player.sendMessage(`[red] Куди так швидко[gray]?[red] Почекай секунду друже[gray]!`);
+function startVoteTimeout() {
+	if (state.voteTimer) {
+		state.voteTimer.cancel();
 	}
 
-	delays.add(playerID);
-	setTimeout(() => { delays.delete(playerID) }, 12000);
-
-	if (rtvVotes.has(playerID)) {
-		player.sendMessage(`[red]Ви вже голосували за зміну карти[gray]!`);
-	} else {
-		rtvVotes.add(playerID);
-
-		if (requiredVotes === 1) {
-			Call.sendMessage([
-				'[white]' + player.name + ' [yellow]Змінює карту[gray]!'
-			].join('\n'));
-		} else {
-			Call.sendMessage([
-				'[white]' + player.name + ' [yellow]Хоче змінити карту[gray]!',
-				'[gray]Зараз голосів: [yellow]' + rtvVotes.size,
-				'[gray]Потрібно голосів: [yellow]' + requiredVotes,
-				'[gray]Використовуй /rtv для зміни карти!'
-			].join('\n'));
+	state.voteTimer = setTimeout(function () {
+		if (state.rtvVotes.size > 0) {
+			Call.sendMessage(
+				"[yellow]Голосування за зміну карти скасовано[gray]! [yellow]Недостатньо голосів протягом хвилини.",
+			);
+			resetVoting();
 		}
+	}, config.voteTimeoutMs);
+}
 
-		changeServerMapIfVotes(rtvVotes.size, requiredVotes)
+function broadcastVoteStatus(player, currentVotes, requiredVotes) {
+	if (requiredVotes === 1) {
+		Call.sendMessage("[white]" + player.name + " [yellow]Змінює карту[gray]!");
+	} else {
+		var message = [
+			"[white]" + player.name + " [yellow]Хоче змінити карту[gray]!",
+			"[gray]Зараз голосів: [yellow]" + currentVotes,
+			"[gray]Потрібно голосів: [yellow]" + requiredVotes,
+			"[gray]Використовуй /rtv для зміни карти!",
+		].join("\n");
+		Call.sendMessage(message);
 	}
 }
 
-// Events functions
+function changeMap() {
+	if (state.mapChangeInProgress) return;
+
+	state.mapChangeInProgress = true;
+	resetVoting();
+
+	Call.sendMessage("[green]Голосів достатньо, змінюю карту!");
+
+	Events.fire(new GameOverEvent(Team.crux));
+}
+
+function checkVotesAndChange() {
+	var currentVotes = state.rtvVotes.size;
+	var requiredVotes = getRequiredVotes();
+
+	if (currentVotes >= requiredVotes) {
+		changeMap();
+	}
+}
+
+// Command handler
+function rtvCommand(args, player) {
+	var playerID = player.uuid();
+
+	if (state.delays.has(playerID)) {
+		player.sendMessage(
+			"[red]Куди так швидко[gray]?[red] Почекай секунду друже[gray]!",
+		);
+		return;
+	}
+
+	state.delays.add(playerID);
+	setTimeout(function () {
+		state.delays.delete(playerID);
+	}, config.cooldownMs);
+
+	if (state.rtvVotes.has(playerID)) {
+		player.sendMessage("[red]Ви вже голосували за зміну карти[gray]!");
+		return;
+	}
+
+	if (state.rtvVotes.size === 0) {
+		startVoteTimeout();
+	}
+
+	state.rtvVotes.add(playerID);
+	broadcastVoteStatus(player, state.rtvVotes.size, getRequiredVotes());
+	checkVotesAndChange();
+}
+
+// Event handlers
 function HandleServerLoad(event) {
 	Vars.netServer.clientCommands.register(
-		'rtv',
-		'',
-		'Голосувати щоб змінити карту',
-		CommandsMethodRunner(rtvCommand)
-	)
+		"rtv",
+		"",
+		"Голосувати щоб змінити карту",
+		CommandsMethodRunner(rtvCommand),
+	);
 }
 
 function HandlePlayerLeave(event) {
-	const playersCount = Groups.player.size()
-	const requiredVotes = Math.ceil(rtvVoteRatio * playersCount);
-	const playerID = event.player.uuid();
+	var playerID = event.player.uuid();
 
-	if (rtvVotes.has(playerID)) {
-		rtvVotes.delete(playerID);
+	if (state.rtvVotes.has(playerID)) {
+		state.rtvVotes.delete(playerID);
 
-		Call.sendMessage([
-			'[white]' + event.player.name + ' [red]Покинув сервер[gray]!',
-			'[gray]Голосування за зміну карти:',
-			'[gray]Зараз голосів: [yellow]' + rtvVotes.size,
-			'[gray]Потрібно голосів: [yellow]' + requiredVotes
-		].join('\n'));
+		var message = [
+			"[white]" + event.player.name + " [red]Покинув сервер[gray]!",
+			"[gray]Голосування за зміну карти:",
+			"[gray]Зараз голосів: [yellow]" + state.rtvVotes.size,
+			"[gray]Потрібно голосів: [yellow]" + getRequiredVotes(),
+		].join("\n");
+		Call.sendMessage(message);
+
+		if (state.rtvVotes.size === 0) {
+			resetVoting();
+		} else {
+			checkVotesAndChange();
+		}
 	}
-
-	changeServerMapIfVotes(rtvVotes.size, requiredVotes)
 }
 
 function HandleGameOver(event) {
-	rtvVotes.clear();
+	resetVoting();
+	state.mapChangeInProgress = false;
 }
 
-// Events register
+// Events registration
 Events.on(ServerLoadEvent, HandleServerLoad);
 Events.on(PlayerLeave, HandlePlayerLeave);
 Events.on(GameOverEvent, HandleGameOver);
